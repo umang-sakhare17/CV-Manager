@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+*.egg
+*.log
+
+# Virtual environments
+venv/
+.env/
+
+# macOS
+.DS_Store
+
+# PyInstaller / build artifacts
+build/
+dist/
+*.spec
+
+# SQLite databases (optional — only ignore if you don’t want app.db in repo)
+*.db
+
+# VSCode / JetBrains IDE settings (optional)
+.vscode/
+.idea/

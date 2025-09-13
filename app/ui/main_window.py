@@ -2,10 +2,11 @@
 import os
 import subprocess
 import sys
+from PyQt6.QtCore import QDate
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QPushButton,
     QFileDialog, QTableWidget, QTableWidgetItem, QMessageBox,
-    QHeaderView, QHBoxLayout
+    QHeaderView, QHBoxLayout, QLineEdit, QLabel, QDateEdit
 )
 from app.core import file_manager, database
 from app.ui.import_dialog import ImportDialog
@@ -34,6 +35,32 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(buttons_layout)
 
+        # Filter row
+        filter_layout = QHBoxLayout()
+
+        filter_layout.addWidget(QLabel("Search:"))
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Company, Role, Notes...")
+        self.search_input.textChanged.connect(self.refresh_table)
+        filter_layout.addWidget(self.search_input)
+
+        filter_layout.addWidget(QLabel("From date:"))
+        self.date_filter = QDateEdit()
+        self.date_filter.setCalendarPopup(True)
+        self.date_filter.setDisplayFormat("yyyy-MM-dd")
+        self.date_filter.setSpecialValueText("Any")   # show 'Any' when no date
+        self.date_filter.setDateRange(QDate(1900, 1, 1), QDate(9999, 12, 31))
+        self.date_filter.setDate(self.date_filter.minimumDate())  # start as 'Any'
+        self.date_filter.dateChanged.connect(self.refresh_table)
+        filter_layout.addWidget(self.date_filter)
+
+
+        self.clear_filter_btn = QPushButton("Clear Filters")
+        self.clear_filter_btn.clicked.connect(self.clear_filters)
+        filter_layout.addWidget(self.clear_filter_btn)
+
+        layout.addLayout(filter_layout)
+
         # Table
         self.table = QTableWidget()
         self.table.setColumnCount(5)
@@ -56,14 +83,47 @@ class MainWindow(QMainWindow):
 
     def refresh_table(self):
         apps = database.fetch_all_applications()
-        self.table.setRowCount(len(apps))
 
-        for row_idx, app in enumerate(apps):
+        # Apply filters
+        search_term = self.search_input.text().strip().lower()
+
+        # Only apply date filter if it's not "Any"
+        date_value = self.date_filter.date()
+        min_date = None
+        if date_value != self.date_filter.minimumDate():
+            min_date = date_value.toString("yyyy-MM-dd")
+
+        filtered = []
+        for app in apps:
+            # Search term filter
+            if search_term and not (
+                search_term in app["company"].lower()
+                or search_term in (app["role"] or "").lower()
+                or search_term in (app["notes"] or "").lower()
+            ):
+                continue
+
+            # Date filter only if set
+            if min_date and app["date_applied"] < min_date:
+                continue
+
+            filtered.append(app)
+
+        self.table.setRowCount(len(filtered))
+
+        for row_idx, app in enumerate(filtered):
             self.table.setItem(row_idx, 0, QTableWidgetItem(app["company"]))
             self.table.setItem(row_idx, 1, QTableWidgetItem(app["role"]))
             self.table.setItem(row_idx, 2, QTableWidgetItem(app["date_applied"]))
             self.table.setItem(row_idx, 3, QTableWidgetItem(app["notes"]))
             self.table.setItem(row_idx, 4, QTableWidgetItem(app["file_path"]))
+
+
+    def clear_filters(self):
+        self.search_input.clear()
+        self.date_filter.setDate(self.date_filter.minimumDate())  # reset to 'Any'
+        self.refresh_table()
+
 
     def import_cv(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select CV PDF", "", "PDF Files (*.pdf)")

@@ -125,3 +125,23 @@ def rename_file(app_id: int, company: str, role: str, date_str: str) -> str:
     database.update_application(app_id, company, role, date_str, app["notes"], str(new_path))
 
     return str(new_path)
+
+def delete_application_and_file(app_id: int) -> None:
+    """
+    Deletes the PDF file and the DB record for an application.
+    """
+    # Fetch current record
+    apps = database.fetch_all_applications(order_by="id ASC")
+    app = next((a for a in apps if a["id"] == app_id), None)
+    if not app:
+        raise FileNotFoundError(f"No application found with id {app_id}")
+
+    file_path = Path(app["file_path"])
+    if file_path.exists():
+        try:
+            file_path.unlink()
+        except Exception as e:
+            print(f"Warning: could not delete file {file_path}: {e}")
+
+    # Delete DB row
+    database.delete_application(app_id)

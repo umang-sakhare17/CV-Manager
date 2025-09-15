@@ -3,10 +3,11 @@ import os
 import subprocess
 import sys
 from PyQt6.QtCore import QDate, Qt
+from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QPushButton,
     QFileDialog, QTableWidget, QTableWidgetItem, QMessageBox,
-    QHeaderView, QHBoxLayout, QLineEdit, QLabel, QDateEdit, QDialog
+    QHeaderView, QHBoxLayout, QLineEdit, QLabel, QDateEdit, QDialog, QAbstractItemView
 )
 from app.core import file_manager, database
 from app.ui.import_dialog import ImportDialog
@@ -40,6 +41,11 @@ class MainWindow(QMainWindow):
         self.edit_button.setEnabled(False)  # only active if row selected
         self.edit_button.clicked.connect(self.edit_metadata)
         buttons_layout.addWidget(self.edit_button)
+
+        # Delete Application button
+        self.delete_button = QPushButton("Delete Application")
+        self.delete_button.clicked.connect(self.delete_application)
+        buttons_layout.addWidget(self.delete_button)
 
         # Filter row
         filter_layout = QHBoxLayout()
@@ -75,11 +81,23 @@ class MainWindow(QMainWindow):
         self.table.setAlternatingRowColors(True)
         self.table.setWordWrap(True)
 
+        # Make rows selectable
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
         # Double-click to open
         self.table.cellDoubleClicked.connect(self.open_selected_file)
 
         # Track selection to enable/disable "Open CV"
         self.table.itemSelectionChanged.connect(self._update_buttons)
+
+        # Allow pressing Delete key to remove an application
+        delete_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Delete), self.table)
+        delete_shortcut.activated.connect(self.delete_application)
+
+        backspace_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Backspace), self.table)
+        backspace_shortcut.activated.connect(self.delete_application)
 
         layout.addWidget(self.table)
         container.setLayout(layout)
@@ -154,7 +172,7 @@ class MainWindow(QMainWindow):
                     data["role"],
                     data["date"],
                     data["notes"],
-                    archived_path
+                    str(archived_path)
                 )
                 self.refresh_table()
             except Exception as e:
@@ -234,3 +252,35 @@ class MainWindow(QMainWindow):
 
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Could not update metadata:\n{e}")
+
+    def delete_application(self):
+        selected = self.table.selectedItems()
+        if not selected:
+            return
+
+        row = self.table.currentRow()
+        if row < 0:
+            return
+
+        # Ask for confirmation
+        reply = QMessageBox.question(
+            self,
+            "Confirm Delete",
+            "Are you sure you want to delete this application?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            item = self.table.item(row, 0)
+            if item:
+                app_id = item.data(Qt.ItemDataRole.UserRole)
+                if app_id:
+                    try:
+                        from app.core import file_manager
+                        # Use the existing function that handles both file and DB deletion
+                        file_manager.delete_application_and_file(app_id)
+                        self.refresh_table()
+                    except Exception as e:
+                        QMessageBox.critical(self, "Error", f"Failed to delete application: {e}")
+

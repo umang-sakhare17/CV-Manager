@@ -109,6 +109,14 @@ def fetch_all_applications(order_by: str = "date_applied DESC, id DESC") -> List
         rows = conn.execute(f"SELECT * FROM applications ORDER BY {order_by};").fetchall()
         return [dict(row) for row in rows]
 
+def get_application_by_id(app_id: int) -> Dict[str, Any] | None:
+    """
+    Returns a single application by ID, or None if not found.
+    """
+    with _connect() as conn:
+        row = conn.execute("SELECT * FROM applications WHERE id = ?;", (app_id,)).fetchone()
+        return dict(row) if row else None
+    
 def update_application(app_id: int, company: str, role: str, date_applied: str, notes: str, file_path: str) -> None:
     """
     Updates an application row.
@@ -122,5 +130,13 @@ def update_application(app_id: int, company: str, role: str, date_applied: str, 
             """,
             (company, role, date_applied, notes, file_path, app_id),
         )
+        conn.commit()
+
+def delete_application(app_id: int) -> None:
+    """
+    Deletes an application row by id.
+    """
+    with _connect() as conn:
+        conn.execute("DELETE FROM applications WHERE id = ?;", (app_id,))
         conn.commit()
 

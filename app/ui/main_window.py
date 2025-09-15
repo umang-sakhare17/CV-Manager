@@ -2,11 +2,11 @@
 import os
 import subprocess
 import sys
-from PyQt6.QtCore import QDate
+from PyQt6.QtCore import QDate, Qt
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QPushButton,
     QFileDialog, QTableWidget, QTableWidgetItem, QMessageBox,
-    QHeaderView, QHBoxLayout, QLineEdit, QLabel, QDateEdit
+    QHeaderView, QHBoxLayout, QLineEdit, QLabel, QDateEdit, QDialog
 )
 from app.core import file_manager, database
 from app.ui.import_dialog import ImportDialog
@@ -34,6 +34,12 @@ class MainWindow(QMainWindow):
         buttons_layout.addWidget(self.open_button)
 
         layout.addLayout(buttons_layout)
+
+        # Edit Metadata button
+        self.edit_button = QPushButton("Edit Metadata")
+        self.edit_button.setEnabled(False)  # only active if row selected
+        self.edit_button.clicked.connect(self.edit_metadata)
+        buttons_layout.addWidget(self.edit_button)
 
         # Filter row
         filter_layout = QHBoxLayout()
@@ -73,7 +79,7 @@ class MainWindow(QMainWindow):
         self.table.cellDoubleClicked.connect(self.open_selected_file)
 
         # Track selection to enable/disable "Open CV"
-        self.table.itemSelectionChanged.connect(self._update_open_button)
+        self.table.itemSelectionChanged.connect(self._update_buttons)
 
         layout.addWidget(self.table)
         container.setLayout(layout)
@@ -112,10 +118,13 @@ class MainWindow(QMainWindow):
         self.table.setRowCount(len(filtered))
 
         for row_idx, app in enumerate(filtered):
-            self.table.setItem(row_idx, 0, QTableWidgetItem(app["company"]))
+            company_item = QTableWidgetItem(app["company"])
+            company_item.setData(Qt.ItemDataRole.UserRole, app["id"])  # store DB id
+            self.table.setItem(row_idx, 0, company_item)
+            
             self.table.setItem(row_idx, 1, QTableWidgetItem(app["role"]))
             self.table.setItem(row_idx, 2, QTableWidgetItem(app["date_applied"]))
-            self.table.setItem(row_idx, 3, QTableWidgetItem(app["notes"]))
+            self.table.setItem(row_idx, 3, QTableWidgetItem(app["notes"] or ""))
             self.table.setItem(row_idx, 4, QTableWidgetItem(app["file_path"]))
 
 
@@ -151,8 +160,11 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to import CV: {e}")
 
-    def _update_open_button(self):
-        self.open_button.setEnabled(bool(self.table.selectedItems()))
+    def _update_buttons(self):
+        # Update both Open CV and Edit Metadata buttons based on selection
+        has_selection = bool(self.table.selectedItems())
+        self.open_button.setEnabled(has_selection)
+        self.edit_button.setEnabled(has_selection)
 
     def open_selected_file(self):
         selected = self.table.currentRow()
@@ -178,3 +190,47 @@ class MainWindow(QMainWindow):
                 subprocess.run(["xdg-open", file_path])
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Could not open file:\n{e}")
+    
+    def edit_metadata(self):
+        row = self.table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "No Selection", "Please select a row to edit.")
+            return
+
+        # Grab DB id from hidden UserRole in company column
+        company_item = self.table.item(row, 0)
+        app_id = company_item.data(Qt.ItemDataRole.UserRole)
+
+        # Fetch current row data
+        role = self.table.item(row, 1).text()
+        date_applied = self.table.item(row, 2).text()
+        notes = self.table.item(row, 3).text()
+
+        # Pre-fill dialog with current values
+        dlg = ImportDialog(self)
+        dlg.company_input.setText(company_item.text())
+        dlg.role_input.setText(role)
+        dlg.date_input.setDate(QDate.fromString(date_applied, "yyyy-MM-dd"))
+        dlg.notes_input.setPlainText(notes)
+
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            data = dlg.get_data()
+            try:
+                # ✅ Rename file and update DB in one go
+                from app.core import file_manager
+                new_path = file_manager.rename_file(
+                    app_id,
+                    data["company"],
+                    data["role"],
+                    data["date"],
+                )
+
+                # ✅ Update table view immediately
+                self.table.item(row, 0).setText(data["company"])
+                self.table.item(row, 1).setText(data["role"])
+                self.table.item(row, 2).setText(data["date"])
+                self.table.item(row, 3).setText(data["notes"])
+                self.table.item(row, 4).setText(new_path)
+
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Could not update metadata:\n{e}")

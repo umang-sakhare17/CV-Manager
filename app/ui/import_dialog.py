@@ -47,10 +47,18 @@ class ImportDialog(QDialog):
 
         self.setLayout(layout)
 
-    def get_data(self):
+    def get_data(self, existing_notes: str = "") -> dict:
+        """
+        Collects data from the dialog. If notes are empty, preserves existing_notes.
+        """
+        notes_value = self.notes_input.toPlainText().strip()
+        if not notes_value and existing_notes:
+            notes_value = existing_notes
+
         return {
             "company": self.company_input.text().strip(),
             "role": self.role_input.text().strip(),
-            "date_applied": self.date_input.date().toString("yyyy-MM-dd"),
-            "notes": self.notes_input.toPlainText().strip(),
+            "date": self.date_input.date().toString("yyyy-MM-dd"),
+            "notes": notes_value,
         }
+

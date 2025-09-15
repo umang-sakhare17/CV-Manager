@@ -1,12 +1,14 @@
 # app/core/file_manager.py
 from __future__ import annotations
 import re
+import os
 import shutil
 import hashlib
 from pathlib import Path
 from typing import Union
 
 from app.core.database import archive_root
+from app.core import database
 
 
 def slugify(s: str) -> str:
@@ -93,3 +95,33 @@ def compute_hash(path: Union[str, Path]) -> str:
         for chunk in iter(lambda: f.read(8192), b""):
             h.update(chunk)
     return h.hexdigest()
+
+def rename_file(app_id: int, company: str, role: str, date_str: str) -> str:
+    """
+    Renames the archived PDF when metadata changes.
+    Looks up the current file path from DB, renames it,
+    and updates the DB with the new path.
+    """
+    # 1. Get the current record
+    apps = database.fetch_all_applications(order_by="id ASC")
+    app = next((a for a in apps if a["id"] == app_id), None)
+    if not app:
+        raise FileNotFoundError(f"No application found with id {app_id}")
+
+    old_path = Path(app["file_path"])
+    if not old_path.exists():
+        raise FileNotFoundError(f"File not found at {old_path}")
+
+    # 2. Build new filename
+    safe_company = "".join(c for c in company if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_")
+    safe_role = "".join(c for c in role if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_")
+    new_name = f"{date_str}_{safe_company}_{safe_role}.pdf"
+    new_path = old_path.parent / new_name
+
+    # 3. Rename/move file
+    shutil.move(str(old_path), str(new_path))
+
+    # 4. Update DB
+    database.update_application(app_id, company, role, date_str, app["notes"], str(new_path))
+
+    return str(new_path)

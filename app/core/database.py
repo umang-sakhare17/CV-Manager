@@ -108,3 +108,19 @@ def fetch_all_applications(order_by: str = "date_applied DESC, id DESC") -> List
     with _connect() as conn:
         rows = conn.execute(f"SELECT * FROM applications ORDER BY {order_by};").fetchall()
         return [dict(row) for row in rows]
+
+def update_application(app_id: int, company: str, role: str, date_applied: str, notes: str, file_path: str) -> None:
+    """
+    Updates an application row.
+    """
+    with _connect() as conn:
+        conn.execute(
+            """
+            UPDATE applications
+            SET company = ?, role = ?, date_applied = ?, notes = ?, file_path = ?
+            WHERE id = ?;
+            """,
+            (company, role, date_applied, notes, file_path, app_id),
+        )
+        conn.commit()
+
